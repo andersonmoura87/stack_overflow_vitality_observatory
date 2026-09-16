@@ -1,0 +1,13 @@
+sources:
+  stackexchange_api:
+    kind: api
+    authority: Stack Exchange API
+    status: phase-1
+  stackexchange_data_dump:
+    kind: archive
+    authority: Stack Exchange Data Dump
+    status: planned
+  developer_survey:
+    kind: survey
+    authority: Stack Overflow Developer Survey
+    status: planned

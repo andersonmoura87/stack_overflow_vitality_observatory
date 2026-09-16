@@ -1,0 +1,21 @@
+site: stackoverflow
+endpoint: https://api.stackexchange.com/2.3/questions
+user_agent: stackoverflow-vitality-observatory/0.2
+page_size: 100
+max_pages: 25
+overlap_seconds: 86400
+connect_timeout: 5.0
+read_timeout: 30.0
+output: data/bronze
+backfill: false
+tags:
+  - python
+  - machine-learning
+  - databricks
+  - aws
+  - google-cloud-platform
+retry:
+  max_attempts: 4
+  initial_backoff_seconds: 1
+  max_backoff_seconds: 60
+  jitter: 1.0

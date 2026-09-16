@@ -1,0 +1,51 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+.env
+.env.*
+!.env.example
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
+*.ipynb_checkpoints/
+data/local/
+data/raw/
+data/bronze/
+data/generated/
+data/*.json
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# AI agents and internal development instructions
+AGENTS.md
+AGENTES.md
+**/AGENTS.md
+**/AGENTES.md
+.codex/
+.cursor/
+.claude/
+
+# Internal specifications and prompts
+specs/
+prompts/
+**/prompts/
+conversations/
+
+# Internal agent validation reports
+docs/phase_*_validation.md
+docs/agent*/
+docs/*agent*
+docs/repository_benchmark.md
+
+# Local validation artifacts
+.validation/
+validation-logs/
+*.validation.log
+*.log

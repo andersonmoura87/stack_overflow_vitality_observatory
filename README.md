@@ -1,4 +1,4 @@
-﻿# Stack Overflow Vitality Observatory
+# Stack Overflow Vitality Observatory
 
 Observatório local-first para investigar mudanças nas funções de descoberta, aprendizagem, documentação, validação e resolução de problemas no Stack Overflow após a popularização da IA generativa. Associação temporal não é apresentada como causalidade.
 
@@ -6,7 +6,7 @@ Observatório local-first para investigar mudanças nas funções de descoberta,
 
 A implementação oferece coleta incremental de perguntas por tag, cliente HTTP com retries e backoff, CLI configurável, snapshots Bronze imutáveis, confirmação de integridade, manifestos de execução e watermark com compare-and-set local. Backfill preserva o estado operacional; dry-run permite conferir a configuração sem acesso à rede.
 
-Silver, Gold, NLP, respostas/comentários, Dump, Survey, dashboard e AWS não estão implementados. Terraform não possui recursos. Nenhuma coleta real é necessária para testes.
+A transformação Bronze → Silver de perguntas inclui contrato versionado, limpeza de HTML/texto/código, quarentena, histórico de conteúdo, observações de métricas e linhagem. Gold, NLP, respostas/comentários, Dump, Survey, dashboard e AWS não estão implementados. Terraform não possui recursos. Nenhuma coleta real é necessária para testes.
 
 ## Desenvolvimento
 
@@ -81,7 +81,7 @@ CLI + YAML -> Stack Exchange API -> páginas Bronze imutáveis
 
 ## Roadmap público
 
-1. Silver: normalização de perguntas, separação de HTML/texto/código e deduplicação por entidade e versão.
+1. Escala Silver: evolução da persistência e migração versionada, após medição do volume local.
 2. Métricas observacionais: atividade por período/tag e concentração das contribuições.
 3. Respostas e resolução: tempo até resposta, aceite e análise com censura.
 4. Histórico e contexto: Data Dump e Developer Survey como fontes independentes.
@@ -89,4 +89,22 @@ CLI + YAML -> Stack Exchange API -> páginas Bronze imutáveis
 6. Consumo analítico: Gold, dashboard e relatórios reproduzíveis.
 7. Operação AWS: adaptadores, observabilidade e infraestrutura após definição de custos e controles.
 
-Esses itens são planejados; o pipeline disponível termina na Bronze local. A análise não pressupõe declínio ou substituição da plataforma.
+Esses itens são planejados; o pipeline disponível termina na Silver local. A análise não pressupõe declínio ou substituição da plataforma.
+
+## Transformação local de perguntas
+
+Com páginas Bronze locais existentes, execute sem rede:
+
+```powershell
+uv run stackoverflow-vitality transform-questions `
+  --bronze-path data/bronze `
+  --silver-path data/silver `
+  --quarantine-path data/quarantine `
+  --dry-run
+```
+
+Remova `--dry-run` para transformar arquivos locais. `--run-id <UUID>` seleciona uma execução Bronze; sem ele todas as páginas são consideradas. `--max-body-chars 500000` limita o corpo por registro. Também é possível usar `python -m stackoverflow_vitality.cli` com src no PYTHONPATH. O dry-run verifica caminhos, envelopes e checksums; não publica saídas nem substitui a validação de qualidade por item.
+
+Conteúdo e métricas têm históricos separados. Saídas JSONL ficam em `data/silver/questions/generation=<hash>/`; o manifesto em `data/silver/manifests/` é o ponto de commit após confirmação de todas as saídas. A quarentena referencia o item Bronze sem duplicar corpos. Replay não duplica dados; cada tentativa recebe manifesto próprio. Testes criam apenas páginas sintéticas em diretórios temporários.
+
+Consulte o [contrato Silver](docs/data-contracts/silver_questions.md), a [decisão de histórico](docs/adr/ADR-008-silver-history-and-publication.md) e o [runbook de transformação](docs/runbooks/silver-transformation.md). O adaptador reconstrói o histórico em memória; volume grande e armazenamento distribuído exigem evolução explícita.

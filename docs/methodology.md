@@ -1,4 +1,4 @@
-﻿# Metodologia de pesquisa
+# Metodologia de pesquisa
 
 A investigação considera como descoberta, aprendizagem, documentação, validação e resolução de problemas no Stack Overflow mudaram após a popularização da IA generativa. Não pressupõe declínio, crescimento ou substituição da plataforma.
 
@@ -23,3 +23,9 @@ Sinais relacionados à IA devem diferenciar menção incidental, uso efetivo, pr
 ## Limites atuais
 
 Essas métricas e modelos ainda não estão implementados. O produto disponível fornece ingestão e proveniência Bronze para análises futuras. Dados derivados publicados deverão manter contratos, versões, evidências rastreáveis e revisão de licença e privacidade, conforme o [data card](data_card.md).
+
+## Semântica das observações Silver
+
+Conteúdo e métricas possuem históricos separados. Mudança de visualizações não cria nova versão de conteúdo; séries futuras devem consultar as observações, enquanto questions representa intervalos de conteúdo observado. valid_from usa o instante de coleta e não estima quando a alteração efetivamente ocorreu. Snapshots tardios reconstroem os intervalos. Empates conflitantes têm desempate determinístico e warning, sem alegação de conhecer a ordem real.
+
+Contagens de quarentena, páginas e aceitos fazem parte do manifesto e devem acompanhar qualquer análise futura de cobertura. Missing permanece null; ausência de resposta aceita não implica ausência de resolução. Nenhuma métrica de vitalidade ou inferência causal é produzida pela transformação.

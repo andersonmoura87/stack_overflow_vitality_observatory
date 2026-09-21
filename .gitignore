@@ -15,6 +15,9 @@ tfplan
 data/local/
 data/raw/
 data/bronze/
+data/silver/
+data/quarantine/
+data/manifests/
 data/generated/
 data/*.json
 .coverage

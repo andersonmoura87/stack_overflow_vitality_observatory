@@ -17,12 +17,15 @@ from stackoverflow_vitality.config import CollectionConfig, load_config
 from stackoverflow_vitality.domain.serialization import to_record
 from stackoverflow_vitality.ingestion.collector import collect_questions
 from stackoverflow_vitality.ingestion.http import HttpxStackExchangeClient
+from stackoverflow_vitality.silver import cli as silver_cli
 from stackoverflow_vitality.storage.bronze import LocalBronzeStore, LocalWatermarkStore
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    if args.command == "transform-questions":
+        return silver_cli.main(args, parser)
     overrides = {
         key: value
         for key, value in vars(args).items()
@@ -69,6 +72,7 @@ def main(argv: list[str] | None = None) -> int:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="stackoverflow_vitality")
     subparsers = parser.add_subparsers(dest="command", required=True)
+    silver_cli.add_parser(subparsers)
     collect = subparsers.add_parser("collect-questions")
     collect.add_argument("--config", type=Path, default=Path("configs/collection.yml"))
     for name, default in asdict(CollectionConfig()).items():

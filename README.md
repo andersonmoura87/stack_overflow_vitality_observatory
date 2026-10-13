@@ -21,7 +21,7 @@ Com o ambiente já preparado:
 ```powershell
 uv run python -m ruff check .
 uv run python -m ruff format --check .
-uv run python -m mypy src
+uv run python -m mypy src benchmarks
 uv run python -m pytest -q
 uv run python -m pytest --cov=src --cov-report=term-missing
 ```

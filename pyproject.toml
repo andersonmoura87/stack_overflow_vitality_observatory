@@ -31,7 +31,7 @@ quote-style = "double"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = "stubs"
+mypy_path = ["src", "stubs"]
 
 [tool.pytest.ini_options]
 addopts = "--strict-markers"

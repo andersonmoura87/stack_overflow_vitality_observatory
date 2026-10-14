@@ -6,7 +6,7 @@ Observatório local-first para investigar mudanças nas funções de descoberta,
 
 A implementação oferece coleta incremental de perguntas por tag, cliente HTTP com retries e backoff, CLI configurável, snapshots Bronze imutáveis, confirmação de integridade, manifestos de execução e watermark com compare-and-set local. Backfill preserva o estado operacional; dry-run permite conferir a configuração sem acesso à rede.
 
-A transformação Bronze → Silver de perguntas inclui contrato versionado, limpeza de HTML/texto/código, quarentena, histórico de conteúdo, observações de métricas e linhagem. Gold, NLP, respostas/comentários, Dump, Survey, dashboard e AWS não estão implementados. Terraform não possui recursos. Nenhuma coleta real é necessária para testes.
+A transformação Bronze → Silver de perguntas inclui contrato versionado, limpeza de HTML/texto/código, quarentena, histórico de conteúdo, observações de métricas e linhagem. A Gold v1 publica indicadores descritivos mensais de perguntas, por site e por tag, a partir dessa Silver. NLP, respostas e comentários como entidades, tempo até resposta, Dump, Survey, dashboard e AWS não estão implementados. Terraform não possui recursos. Nenhuma coleta real é necessária para testes.
 
 ## Desenvolvimento
 
@@ -76,20 +76,20 @@ CLI + YAML -> Stack Exchange API -> páginas Bronze imutáveis
 
 - [Arquitetura local](docs/architecture.md) e [decisões de persistência](docs/adr/ADR-007-local-commit-and-immutability.md).
 - [Contrato Bronze](docs/data-contracts/bronze_stackexchange_questions_snapshot.md), [watermarks](docs/data-contracts/collection_watermarks.md) e [execuções](docs/data-contracts/ingestion_runs.md).
-- [Perguntas de pesquisa](docs/research_questions.md), [metodologia](docs/methodology.md) e [data card](docs/data_card.md).
+- [Perguntas de pesquisa](docs/research_questions.md), [metodologia](docs/methodology.md), [data card](docs/data_card.md) e [contrato Gold](docs/data-contracts/gold_vitality.md).
 - [Recuperação de falhas parciais](docs/runbooks/partial-write.md).
 
 ## Roadmap público
 
 1. Escala Silver: evolução da persistência e migração versionada, após medição do volume local.
-2. Métricas observacionais: atividade por período/tag e concentração das contribuições.
+2. Métricas observacionais além dos agregados descritivos da Gold v1.
 3. Respostas e resolução: tempo até resposta, aceite e análise com censura.
 4. Histórico e contexto: Data Dump e Developer Survey como fontes independentes.
 5. NLP avaliado: sinais de IA, tópicos e complexidade técnica do conteúdo.
-6. Consumo analítico: Gold, dashboard e relatórios reproduzíveis.
+6. Consumo analítico: dashboard e relatórios reproduzíveis.
 7. Operação AWS: adaptadores, observabilidade e infraestrutura após definição de custos e controles.
 
-Esses itens são planejados; o pipeline disponível termina na Silver local. A análise não pressupõe declínio ou substituição da plataforma.
+A Gold v1 descritiva faz parte do pipeline local. Os demais itens permanecem planejados. A análise não pressupõe declínio ou substituição da plataforma.
 
 ## Transformação local de perguntas
 
@@ -108,3 +108,17 @@ Remova `--dry-run` para transformar arquivos locais. `--run-id <UUID>` seleciona
 Conteúdo e métricas têm históricos separados. Saídas JSONL ficam em `data/silver/questions/generation=<hash>/`; o manifesto em `data/silver/manifests/` é o ponto de commit após confirmação de todas as saídas. A quarentena referencia o item Bronze sem duplicar corpos. Replay não duplica dados; cada tentativa recebe manifesto próprio. Testes criam apenas páginas sintéticas em diretórios temporários.
 
 Consulte o [contrato Silver](docs/data-contracts/silver_questions.md), a [decisão de histórico](docs/adr/ADR-008-silver-history-and-publication.md) e o [runbook de transformação](docs/runbooks/silver-transformation.md). O adaptador reconstrói o histórico em memória; volume grande e armazenamento distribuído exigem evolução explícita.
+
+## Indicadores descritivos
+
+Com uma geração Silver local já publicada:
+
+```powershell
+uv run stackoverflow-vitality build-vitality `
+  --silver-path data/silver `
+  --gold-path data/gold `
+  --as-of 2026-09-10T00:00:00Z `
+  --dry-run
+```
+
+`--as-of` é obrigatório para publicar e deve terminar em `Z`. Sem ele, a execução real falha antes de gravar. O dry-run pode omitir `--as-of` e imprime o maior `collected_at`, marcado como derivado, sem criar arquivos. A saída descreve contagens, distribuições e exposição. Não estima causa, tempo até resposta ou sobrevivência. O contrato está em [gold_vitality.md](docs/data-contracts/gold_vitality.md) e o procedimento em [gold-vitality.md](docs/runbooks/gold-vitality.md).

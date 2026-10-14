@@ -22,10 +22,18 @@ Sinais relacionados à IA devem diferenciar menção incidental, uso efetivo, pr
 
 ## Limites atuais
 
-Essas métricas e modelos ainda não estão implementados. O produto disponível fornece ingestão e proveniência Bronze para análises futuras. Dados derivados publicados deverão manter contratos, versões, evidências rastreáveis e revisão de licença e privacidade, conforme o [data card](data_card.md).
+A Gold v1 produz indicadores descritivos mensais a partir da Silver de perguntas. Tempo até resposta, sobrevivência, respostas e comentários como entidades, NLP, detecção de IA e inferência causal não estão implementados. Dados derivados publicados mantêm contratos, versões e linhagem, conforme o [data card](data_card.md).
 
 ## Semântica das observações Silver
 
 Conteúdo e métricas possuem históricos separados. Mudança de visualizações não cria nova versão de conteúdo; séries futuras devem consultar as observações, enquanto questions representa intervalos de conteúdo observado. valid_from usa o instante de coleta e não estima quando a alteração efetivamente ocorreu. Snapshots tardios reconstroem os intervalos. Empates conflitantes têm desempate determinístico e warning, sem alegação de conhecer a ordem real.
 
 Contagens de quarentena, páginas e aceitos fazem parte do manifesto e devem acompanhar qualquer análise futura de cobertura. Missing permanece null; ausência de resposta aceita não implica ausência de resolução. Nenhuma métrica de vitalidade ou inferência causal é produzida pela transformação.
+
+## Indicadores descritivos Gold v1
+
+A Gold lê a geração Silver committed e descreve o estado observado até `as_of`. O mês é o mês UTC de `creation_at`. Métricas vêm da última observação com `collected_at <= as_of`. Tags e fechamento vêm da versão de conteúdo vigente nesse corte, não das métricas posteriores que a materialização do intervalo possa carregar. A pergunta entra uma vez no agregado mensal. Publicar exige o corte explícito; a descoberta do maior `collected_at` fica restrita ao dry-run.
+
+`source_is_answered`, `has_answers` e `has_accepted_answer` permanecem separados. Null de `is_answered` ou `answer_count` não vira false nem zero. `accepted_answer_id` nulo significa que nenhum identificador de resposta aceita foi observado; isso não cria data de resposta. Divergências conhecidas, como `is_answered=false` com `answer_count>0`, são contadas e não corrigidas.
+
+`exposure_seconds_*` mede o tempo entre a criação e o corte. Meses recentes tiveram menos tempo para receber respostas. Uma queda no fim da série não é, por si, mudança de vitalidade nem efeito de uma ferramenta. Conclusão causal exigiria desenho estatístico, controles, cobertura histórica adequada e fontes complementares. O contrato está em [gold_vitality.md](data-contracts/gold_vitality.md).

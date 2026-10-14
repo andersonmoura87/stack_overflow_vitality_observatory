@@ -10,4 +10,6 @@
 
 **Dados Gold v1:** agregados descritivos mensais e por tag, no corte `as_of`, calculados só da Silver de perguntas. Os sinais `source_is_answered`, `has_answers` e `has_accepted_answer` permanecem distintos. A exposição até o corte acompanha a série. Os agregados não estimam tempo até resposta, sobrevivência ou efeito causal. Ver [contrato Gold](data-contracts/gold_vitality.md).
 
+**Respostas:** Bronze imutável por lote de perguntas e Silver própria, com conteúdo versionado separado de score e aceite. `owner_user_id` nulo permanece nulo. Divergência de aceite com a pergunta é qualidade, não correção. A cobertura é a das perguntas solicitadas; não é o histórico completo do sítio. Ver [ADR-010](adr/ADR-010-answer-collection-and-history.md).
+
 **Tempo e retenção:** intervalos refletem observação, não todas as alterações reais. Retenção local indefinida, sem expurgo automático. O campo de licença é preservado quando disponível; sua ausência não é preenchida por suposição. Somente owner_user_id é retido, sem perfil completo. Ver [contrato Silver](data-contracts/silver_questions.md).

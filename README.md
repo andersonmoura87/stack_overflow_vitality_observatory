@@ -52,6 +52,27 @@ Ambiente permitido: `STACKEXCHANGE_SITE`, `STACKEXCHANGE_TAG`, `STACKEXCHANGE_US
 
 Backfill histórico: acrescentar `--backfill` aos argumentos; preserva a janela explícita e não altera watermark operacional. Intervalo operacional anterior ao estado confirmado falha. `--no-backfill` sobrescreve configuração de backfill do YAML.
 
+Respostas usam outro documento, `configs/answers.yml`, e não alteram a coleta de perguntas. O dry-run abaixo só resolve lotes:
+
+```powershell
+python -m stackoverflow_vitality.cli collect-answers `
+  --config configs/answers.yml `
+  --question-ids-file data/local/question_ids.json `
+  --dry-run
+```
+
+Precedência da coleta de respostas: CLI, YAML, `STACKEXCHANGE_ANSWERS_SITE`, `STACKEXCHANGE_ANSWERS_ENDPOINT`, `STACKEXCHANGE_ANSWERS_USER_AGENT`, `STACKEXCHANGE_ANSWERS_BRONZE`, `STACKEXCHANGE_ANSWERS_SILVER`, default. A chave continua só em `STACKEXCHANGE_API_KEY`. `--mode incremental` avança o checkpoint só dos lotes ainda não concluídos. `--mode refresh` recolhe os lotes pedidos sem mover o checkpoint. A transformação offline:
+
+```powershell
+python -m stackoverflow_vitality.cli transform-answers `
+  --bronze-path data/bronze `
+  --silver-path data/silver `
+  --quarantine-path data/quarantine `
+  --dry-run
+```
+
+O dry-run lê páginas locais, não escreve e não acessa a rede. Contratos e o procedimento estão em [ADR-010](docs/adr/ADR-010-answer-collection-and-history.md) e no [runbook](docs/runbooks/answers.md).
+
 ## Garantias locais e limites
 
 Páginas, prepared e manifesto terminal usam o mesmo `RunContext`, sob `site/tag/window_date/run_id`. Publicação via hard link não substitui objeto existente. Replay idêntico não reescreve; divergência falha. A confirmação verifica JSON, tamanho, bytes/metadados e checksum de payload. Exemplo de payload exclusivamente sintético:
@@ -75,7 +96,7 @@ CLI + YAML -> Stack Exchange API -> páginas Bronze imutáveis
 ```
 
 - [Arquitetura local](docs/architecture.md) e [decisões de persistência](docs/adr/ADR-007-local-commit-and-immutability.md).
-- [Contrato Bronze](docs/data-contracts/bronze_stackexchange_questions_snapshot.md), [watermarks](docs/data-contracts/collection_watermarks.md) e [execuções](docs/data-contracts/ingestion_runs.md).
+- [Contrato Bronze](docs/data-contracts/bronze_stackexchange_questions_snapshot.md), [watermarks](docs/data-contracts/collection_watermarks.md), [execuções](docs/data-contracts/ingestion_runs.md) e [respostas](docs/data-contracts/bronze_stackexchange_answers_snapshot.md).
 - [Perguntas de pesquisa](docs/research_questions.md), [metodologia](docs/methodology.md), [data card](docs/data_card.md) e [contrato Gold](docs/data-contracts/gold_vitality.md).
 - [Recuperação de falhas parciais](docs/runbooks/partial-write.md).
 
@@ -83,7 +104,7 @@ CLI + YAML -> Stack Exchange API -> páginas Bronze imutáveis
 
 1. Escala Silver: evolução da persistência e migração versionada, após medição do volume local.
 2. Métricas observacionais além dos agregados descritivos da Gold v1.
-3. Respostas e resolução: tempo até resposta, aceite e análise com censura.
+3. Tempo até resposta e aceite, com censura. A entidade de resposta já tem Bronze e Silver; essas métricas ainda não são calculadas.
 4. Histórico e contexto: Data Dump e Developer Survey como fontes independentes.
 5. NLP avaliado: sinais de IA, tópicos e complexidade técnica do conteúdo.
 6. Consumo analítico: dashboard e relatórios reproduzíveis.

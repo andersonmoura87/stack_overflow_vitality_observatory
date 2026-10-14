@@ -1,6 +1,6 @@
 # Arquitetura implementada
 
-CLI com configuração YAML -> cliente HTTP substituível -> páginas Bronze imutáveis -> prepared -> CAS do watermark -> manifesto terminal. A ingestão local é complementada pela transformação offline de perguntas Bronze → Silver e pela Gold descritiva derivada dessa Silver. Dump/Survey, dashboard e NLP são arquitetura futura.
+CLI com configuração YAML -> cliente HTTP substituível -> páginas Bronze imutáveis -> prepared -> CAS do watermark -> manifesto terminal. A ingestão local é complementada pela transformação offline de perguntas Bronze → Silver, pela Gold descritiva derivada dessa Silver e pela trilha separada de respostas: lotes de IDs → Bronze imutável → Silver histórica. Dump/Survey, dashboard e NLP são arquitetura futura.
 
 `RunContext` determina um único diretório por contexto de execução, baseado no início UTC da janela efetiva. Backoff válido é consumido pelo coletor; retries HTTP respeitam backoff mandatório sem reduzi-lo. Bronze usa hard link exclusivo e validação integral dos bytes. Watermark inclui fonte/site/endpoint/tag e usa compare-and-set protegido por lock local. Backfill preserva o watermark.
 
@@ -17,3 +17,9 @@ O catálogo evita duplicar conteúdo por mudança de métrica; observações pre
 ## Gold descritiva
 
 CLI build-vitality lê o manifesto Silver committed, seleciona uma pergunta por site e question_id no corte `as_of` e publica dois JSONL imutáveis mais um manifesto. Métricas vêm da observação com `collected_at <= as_of`. Tags e fechamento vêm da versão de conteúdo vigente nesse corte. Publicação real exige `--as-of`; o dry-run pode apenas exibir o maior `collected_at`. Não altera Bronze, watermark ou Silver. Não estima tempo até resposta nem efeito causal. Detalhes no [ADR-009](adr/ADR-009-gold-descriptive-vitality.md) e no [contrato](data-contracts/gold_vitality.md).
+
+## Respostas
+
+`collect-answers` chama o mesmo cliente HTTP em `/questions/{ids}/answers`. O `;` separa IDs e não é o AND de tags. Cada snapshot fica em `answers/site=*/run=<run_id>/b=<hash>/page=NNNN.json`. O modo `incremental` busca só lotes fora do checkpoint e só então avança o cursor. O modo `refresh` busca de novo os lotes pedidos e não avança o cursor. Falha e truncamento também não avançam. O manifesto sai depois do checkpoint.
+
+`transform-answers` publica catálogo, observações de score/aceite e versões de conteúdo. A história é ordenada por `collected_at`, independente da ordem de leitura. A Silver de perguntas só é lida, quando um arquivo é informado, para confrontar aceite. Divergência vira qualidade. Ver [ADR-010](adr/ADR-010-answer-collection-and-history.md).

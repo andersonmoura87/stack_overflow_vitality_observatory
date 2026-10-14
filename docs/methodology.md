@@ -22,7 +22,9 @@ Sinais relacionados à IA devem diferenciar menção incidental, uso efetivo, pr
 
 ## Limites atuais
 
-A Gold v1 produz indicadores descritivos mensais a partir da Silver de perguntas. Tempo até resposta, sobrevivência, respostas e comentários como entidades, NLP, detecção de IA e inferência causal não estão implementados. Dados derivados publicados mantêm contratos, versões e linhagem, conforme o [data card](data_card.md).
+A Gold v1 produz indicadores descritivos mensais a partir da Silver de perguntas. A trilha de respostas preserva criação, coleta, score, aceite observado, conteúdo, cobertura e linhagem, mas não calcula tempo até a primeira resposta, tempo até o aceite, sobrevivência, ranking, sentimento ou efeito causal. Comentários, NLP e Gold de respostas não estão implementados. Dados derivados publicados mantêm contratos, versões e linhagem, conforme o [data card](data_card.md).
+
+`creation_at` da resposta é tempo do evento na fonte. `collected_at` é tempo da observação. `last_activity_at` é o timestamp de atividade visto nessa observação e existe só na observação de métricas. `is_accepted` é estado observado, não o instante do aceite. Ausência numa coleta não prova exclusão. A API incremental pode censurar à esquerda. Tempo até a primeira resposta exige cobertura histórica; o Data Dump será necessário para um backfill confiável. Não ter coletado uma resposta não prova que ela não existiu.
 
 ## Semântica das observações Silver
 

@@ -1,0 +1,20 @@
+site: stackoverflow
+endpoint: https://api.stackexchange.com/2.3/questions
+user_agent: stackoverflow-vitality-observatory/0.2
+page_size: 100
+max_pages: 10
+max_batch_size: 20
+max_url_length: 2000
+query_allowance: 256
+concurrency: 1
+api_filter: withbody
+connect_timeout: 5.0
+read_timeout: 30.0
+bronze_output: data/bronze
+silver_output: data/silver
+mode: incremental
+retry:
+  max_attempts: 4
+  initial_backoff_seconds: 1
+  max_backoff_seconds: 60
+  jitter: 1.0

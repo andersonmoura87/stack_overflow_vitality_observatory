@@ -1,9 +1,11 @@
 """Small correctness checks only. Performance scales are never run by pytest."""
 
 import json
+import stat
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -19,7 +21,7 @@ from benchmarks.config import (
 )
 from benchmarks.generate_bronze import corpus, question, write_corpus
 from benchmarks.instrumentation import Timings
-from benchmarks.run_silver_benchmark import parser
+from benchmarks.run_silver_benchmark import handle_supervisor_failure, parser, supervise_worker
 from benchmarks.safety import (
     ALLOWED,
     REPOSITORY,
@@ -30,6 +32,7 @@ from benchmarks.safety import (
     worker_environment,
     worker_launch_allowed,
 )
+from benchmarks.scenarios import tree_bytes
 from stackoverflow_vitality.silver import quality
 
 
@@ -204,6 +207,9 @@ def test_all_scenarios_isolated_small_scale(benchmark_dir):
     assert result.returncode == 0, result.stdout + result.stderr
     document = json.loads((benchmark_dir / "results/latest.json").read_text())
     assert document["schema_version"] == "silver_benchmark.v1"
+    assert document["status"] == "completed"
+    assert document["completed"] is True
+    assert document["completed_measurements"] == 7
     assert document["scenario_order"] == order
     assert [row["scenario"] for row in document["results"]] == order
     assert document["parameters"]["records"] == 20
@@ -368,3 +374,209 @@ def test_worker_environment_and_coverage_stay_inside_root(benchmark_dir, monkeyp
     park_coverage_controllers([locked], benchmark_dir)
     assert locked._auto_save is False
     assert locked._data._filename == str(REPOSITORY / ".coverage")
+
+
+class _Worker:
+    def __init__(self, exit_after_polls: int | None = None) -> None:
+        self.exit_after_polls = exit_after_polls
+        self.polls = 0
+        self.killed = 0
+        self.waited = 0
+        self.returncode: int | None = None
+
+    def poll(self) -> int | None:
+        self.polls += 1
+        if self.returncode is not None:
+            return self.returncode
+        if self.exit_after_polls is not None and self.polls > self.exit_after_polls:
+            self.returncode = 0
+        return self.returncode
+
+    def kill(self) -> None:
+        self.killed += 1
+        self.returncode = 1
+
+    def wait(self) -> int:
+        self.waited += 1
+        if self.returncode is None:
+            self.returncode = 0
+        return self.returncode
+
+
+def test_tree_bytes_skips_file_removed_before_stat(tmp_path, monkeypatch):
+    root = tmp_path / "monitor"
+    root.mkdir()
+    (root / ".pending-token").write_bytes(b"temporary")
+    (root / "kept.json").write_bytes(b"abc")
+    original = Path.lstat
+
+    def lstat(self, *args, **kwargs):
+        if self.name == ".pending-token":
+            raise FileNotFoundError(2, "missing", str(self))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+    assert tree_bytes(root) == 3
+
+
+def test_tree_bytes_omits_pending_file_replaced_during_scan(tmp_path, monkeypatch):
+    root = tmp_path / "monitor"
+    root.mkdir()
+    pending = root / ".pending-token"
+    (root / "questions.jsonl").write_bytes(b"final!")
+    original_rglob = Path.rglob
+    original_lstat = Path.lstat
+
+    def rglob(self, pattern="*"):
+        if self == root:
+            return iter([pending])
+        return original_rglob(self, pattern)
+
+    def lstat(self, *args, **kwargs):
+        if self == pending:
+            raise FileNotFoundError(2, "missing", str(self))
+        return original_lstat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "rglob", rglob)
+    monkeypatch.setattr(Path, "lstat", lstat)
+    assert tree_bytes(root) == 0
+
+
+def test_tree_bytes_counts_final_file_on_next_sample(tmp_path):
+    root = tmp_path / "monitor"
+    root.mkdir()
+    payload = b"final!"
+    (root / "questions.jsonl").write_bytes(payload)
+    assert tree_bytes(root) == len(payload)
+
+
+def test_tree_bytes_propagates_permission_error(tmp_path, monkeypatch):
+    root = tmp_path / "monitor"
+    root.mkdir()
+    (root / "blocked").write_bytes(b"x")
+    original = Path.lstat
+
+    def lstat(self, *args, **kwargs):
+        if self.name == "blocked":
+            raise PermissionError(13, "denied", str(self))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+    with pytest.raises(PermissionError):
+        tree_bytes(root)
+
+
+def test_tree_bytes_propagates_other_io_errors(tmp_path, monkeypatch):
+    root = tmp_path / "monitor"
+    root.mkdir()
+    (root / "damaged").write_bytes(b"x")
+    original = Path.lstat
+
+    def lstat(self, *args, **kwargs):
+        if self.name == "damaged":
+            raise OSError(5, "Input/output error", str(self))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+    with pytest.raises(OSError, match="Input/output error"):
+        tree_bytes(root)
+
+
+def test_tree_bytes_missing_root_fails(tmp_path):
+    with pytest.raises(FileNotFoundError, match="monitored root is missing"):
+        tree_bytes(tmp_path / "absent")
+
+
+def test_tree_bytes_rejects_symlink(tmp_path, monkeypatch):
+    root = tmp_path / "monitor"
+    root.mkdir()
+    (root / "linked").write_bytes(b"abc")
+    original = Path.lstat
+
+    def lstat(self, *args, **kwargs):
+        if self.name == "linked":
+            return type("Info", (), {"st_mode": stat.S_IFLNK, "st_size": 3})()
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+    with pytest.raises(PermissionError, match="symlinks are forbidden"):
+        tree_bytes(root)
+
+
+def test_disk_limit_still_stops_the_worker(tmp_path, monkeypatch):
+    limit = 32 * 1024**2
+    seen = {"n": 0}
+
+    def measure(root: Path) -> int:
+        seen["n"] += 1
+        return limit if seen["n"] == 1 else limit + 1
+
+    monkeypatch.setattr("benchmarks.run_silver_benchmark.tree_bytes", measure)
+    process = _Worker()
+    reason = supervise_worker(process, tmp_path, limit, time.monotonic() + 30, pause=lambda: None)
+    assert reason == "disk_limit"
+    assert process.killed == 1
+    assert process.waited >= 1
+    assert seen["n"] >= 2
+
+
+def test_disk_measured_after_worker_exits(tmp_path, monkeypatch):
+    seen = {"n": 0}
+
+    def measure(root: Path) -> int:
+        seen["n"] += 1
+        return 1 if seen["n"] == 1 else 50
+
+    monkeypatch.setattr("benchmarks.run_silver_benchmark.tree_bytes", measure)
+    process = _Worker(exit_after_polls=1)
+    reason = supervise_worker(process, tmp_path, 10, time.monotonic() + 30, pause=lambda: None)
+    assert reason == "disk_limit"
+    assert process.killed == 0
+    assert process.waited == 1
+    assert seen["n"] == 2
+
+
+def test_monitor_reaps_worker_when_measurement_fails(tmp_path, monkeypatch):
+    def measure(root: Path) -> int:
+        raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr("benchmarks.run_silver_benchmark.tree_bytes", measure)
+    process = _Worker()
+    with pytest.raises(OSError, match="Input/output error"):
+        supervise_worker(process, tmp_path, 1024, time.monotonic() + 30, pause=lambda: None)
+    assert process.killed == 1
+    assert process.waited == 1
+
+
+def test_unexpected_supervisor_failure_records_failed_status(benchmark_dir):
+    document = {
+        "batch_id": "partial-batch",
+        "results": [{"scenario": "B1", "iteration": 1, "status": "completed", "records_input": 20}],
+    }
+    process = _Worker()
+    code = handle_supervisor_failure(
+        benchmark_dir,
+        document,
+        RuntimeError("pending file disappeared\nTraceback (most recent call last): secret"),
+        process,
+    )
+    assert code == 1
+    assert process.killed == 1
+    assert process.waited == 1
+    latest = json.loads((benchmark_dir / "results" / "latest.json").read_text(encoding="utf-8"))
+    batch = json.loads(
+        (benchmark_dir / "results" / "partial-batch.json").read_text(encoding="utf-8")
+    )
+    for published in (latest, batch):
+        assert published["status"] == "failed"
+        assert published["completed"] is False
+        assert published["error_type"] == "RuntimeError"
+        assert published["reason"] == (
+            "pending file disappeared Traceback (most recent call last): secret"
+        )
+        assert "\n" not in published["reason"]
+        assert published["completed_measurements"] == 1
+        assert published["results"] == [
+            {"scenario": "B1", "iteration": 1, "status": "completed", "records_input": 20}
+        ]
+        assert published["status"] != "completed"

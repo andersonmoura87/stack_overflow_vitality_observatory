@@ -2,6 +2,7 @@
 
 import gc
 import json
+import stat
 import threading
 import time
 import tracemalloc
@@ -68,7 +69,26 @@ def load(root: Path) -> dict[str, Any]:
 
 
 def tree_bytes(root: Path) -> int:
-    return sum(path.stat().st_size for path in root.rglob("*") if path.is_file())
+    """Sum regular files. Skip only a file that vanishes between listing and stat."""
+    try:
+        info = root.lstat()
+    except FileNotFoundError:
+        raise FileNotFoundError("monitored root is missing") from None
+    if stat.S_ISLNK(info.st_mode):
+        raise PermissionError("symlinks are forbidden in benchmark output")
+    if not stat.S_ISDIR(info.st_mode):
+        raise FileNotFoundError("monitored root is missing")
+    total = 0
+    for path in root.rglob("*"):
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(info.st_mode):
+            raise PermissionError("symlinks are forbidden in benchmark output")
+        if stat.S_ISREG(info.st_mode):
+            total += info.st_size
+    return total
 
 
 def run_scenario(config: Config, scenario: str, root: Path, iteration: int) -> dict[str, object]:

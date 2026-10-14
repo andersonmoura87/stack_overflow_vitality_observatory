@@ -11,9 +11,10 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 from uuid import uuid4
 
 # Direct script execution needs both the repository package and the src layout.
@@ -58,6 +59,97 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--scenarios", nargs="+", choices=SCENARIOS, default=list(SCENARIOS))
     result.add_argument("--suite-timeout-seconds", type=int, default=1800)
     return result
+
+
+class WorkerProcess(Protocol):
+    def poll(self) -> int | None: ...
+
+    def kill(self) -> None: ...
+
+    def wait(self) -> int: ...
+
+
+def sanitize_failure(error: BaseException) -> str:
+    """Single-line cause, capped so a traceback or command line is not published."""
+    return " ".join(str(error).split())[:200]
+
+
+def completed_measurements(document: dict[str, Any]) -> int:
+    return sum(1 for row in document["results"] if row.get("status") == "completed")
+
+
+def note_progress(document: dict[str, Any]) -> None:
+    document["completed"] = False
+    document["completed_measurements"] = completed_measurements(document)
+
+
+def note_success(document: dict[str, Any]) -> None:
+    document["status"] = "completed"
+    document["completed"] = True
+    document["completed_measurements"] = completed_measurements(document)
+
+
+def note_failure(document: dict[str, Any], error_type: str, reason: str) -> None:
+    document["status"] = "failed"
+    document["completed"] = False
+    document["error_type"] = error_type
+    document["reason"] = reason
+    document["completed_measurements"] = completed_measurements(document)
+
+
+def handle_supervisor_failure(
+    output: Path,
+    document: dict[str, Any],
+    error: BaseException,
+    process: WorkerProcess | None,
+) -> int:
+    """Publish an explicit failed suite and reap a worker the monitor did not already stop."""
+    if process is not None and process.poll() is None:
+        process.kill()
+        process.wait()
+    note_failure(document, type(error).__name__, sanitize_failure(error))
+    print(
+        json.dumps({"status": "failed", "error_type": type(error).__name__}),
+        file=sys.stderr,
+        flush=True,
+    )
+    try:
+        export(output, document)
+    except Exception:
+        return 1
+    return 1
+
+
+def supervise_worker(
+    process: WorkerProcess,
+    batch_root: Path,
+    limit_bytes: int,
+    deadline: float,
+    *,
+    pause: Callable[[], None] | None = None,
+) -> str | None:
+    """Watch disk and time. Measure once more after the worker has been reaped."""
+    wait_for_change = pause if pause is not None else lambda: time.sleep(0.5)
+    stop_reason: str | None = None
+    try:
+        while process.poll() is None:
+            if time.monotonic() > deadline:
+                stop_reason = "timeout"
+            elif tree_bytes(batch_root) > limit_bytes:
+                stop_reason = "disk_limit"
+            if stop_reason:
+                process.kill()
+                break
+            wait_for_change()
+        process.wait()
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+    usage = tree_bytes(batch_root)
+    if stop_reason is None and usage > limit_bytes:
+        stop_reason = "disk_limit"
+    return stop_reason
 
 
 def export(output: Path, document: dict[str, Any]) -> None:
@@ -147,102 +239,111 @@ def main(argv: list[str] | None = None) -> int:
     }
     started = time.monotonic()
     failed = False
-    for iteration in range(1, config.iterations + 1):
-        for scenario in args.scenarios:
-            root = batch_root / f"iteration={iteration}" / scenario
-            root.mkdir(parents=True)
-            configuration = root / "config.json"
-            configuration.write_text(
-                json.dumps(
-                    {"config": asdict(config), "scenario": scenario, "iteration": iteration}
-                ),
-                encoding="utf-8",
-            )
-            limit = min(
-                config.timeout_seconds, args.suite_timeout_seconds - (time.monotonic() - started)
-            )
-            stop_reason: str | None = None
-            print(
-                f"start records={config.records} iteration={iteration} scenario={scenario}",
-                flush=True,
-            )
-            with (root / "worker.log").open("w", encoding="utf-8") as log:
-                process = subprocess.Popen(
-                    [sys.executable, str(Path(__file__).resolve()), "--worker", str(configuration)],
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    env=worker_environment(),
-                )
-                deadline = time.monotonic() + max(0, limit)
-                try:
-                    while process.poll() is None:
-                        if time.monotonic() > deadline:
-                            stop_reason = "timeout"
-                        elif tree_bytes(batch_root) > config.max_disk_mb * 1024**2:
-                            stop_reason = "disk_limit"
-                        if stop_reason:
-                            process.kill()
-                            break
-                        time.sleep(0.5)
-                    process.wait()
-                finally:
-                    if process.poll() is None:
-                        process.kill()
-                        process.wait()
-            result_path = root / "experiment" / "result.json"
-            if process.returncode == 0 and result_path.exists():
-                row = cast(dict[str, Any], json.loads(result_path.read_text(encoding="utf-8")))
-            else:
-                failure = root / "failure.json"
-                row = {
-                    "scenario": scenario,
-                    "iteration": iteration,
-                    "seed": config.seed,
-                    "profile": config.profile,
-                    "status": "failed",
-                    "records_input": config.records,
-                    "correctness_passed": False,
-                    "elapsed_seconds": None,
-                    "records_per_second": None,
-                    "peak_memory_mb": None,
-                    "error_type": stop_reason
-                    or ("memory_limit" if process.returncode == 70 else "worker_failure"),
-                    "failure_details": (
-                        cast(dict[str, Any], json.loads(failure.read_text(encoding="utf-8")))
-                        if failure.exists()
-                        else {}
+    process: subprocess.Popen[bytes] | None = None
+    try:
+        for iteration in range(1, config.iterations + 1):
+            for scenario in args.scenarios:
+                root = batch_root / f"iteration={iteration}" / scenario
+                root.mkdir(parents=True)
+                configuration = root / "config.json"
+                configuration.write_text(
+                    json.dumps(
+                        {"config": asdict(config), "scenario": scenario, "iteration": iteration}
                     ),
-                    "worker_exit_code": process.returncode,
-                }
-                failed = True
-            row.update(
-                python_version=metadata["python_version"],
-                platform=metadata["platform"],
-                batch_id=batch,
-            )
-            document["results"].append(row)
-            document["suite_wall_seconds"] = time.monotonic() - started
-            export(output, document)
-            print(
-                json.dumps(
-                    {
-                        k: row.get(k)
-                        for k in (
-                            "scenario",
-                            "iteration",
-                            "status",
-                            "elapsed_seconds",
-                            "peak_memory_mb",
-                            "records_per_second",
-                            "error_type",
-                        )
+                    encoding="utf-8",
+                )
+                limit = min(
+                    config.timeout_seconds,
+                    args.suite_timeout_seconds - (time.monotonic() - started),
+                )
+                print(
+                    f"start records={config.records} iteration={iteration} scenario={scenario}",
+                    flush=True,
+                )
+                with (root / "worker.log").open("w", encoding="utf-8") as log:
+                    process = subprocess.Popen(
+                        [
+                            sys.executable,
+                            str(Path(__file__).resolve()),
+                            "--worker",
+                            str(configuration),
+                        ],
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                        env=worker_environment(),
+                    )
+                    stop_reason = supervise_worker(
+                        process,
+                        batch_root,
+                        config.max_disk_mb * 1024**2,
+                        time.monotonic() + max(0, limit),
+                    )
+                result_path = root / "experiment" / "result.json"
+                if stop_reason is None and process.returncode == 0 and result_path.exists():
+                    row = cast(dict[str, Any], json.loads(result_path.read_text(encoding="utf-8")))
+                else:
+                    failure = root / "failure.json"
+                    row = {
+                        "scenario": scenario,
+                        "iteration": iteration,
+                        "seed": config.seed,
+                        "profile": config.profile,
+                        "status": "failed",
+                        "records_input": config.records,
+                        "correctness_passed": False,
+                        "elapsed_seconds": None,
+                        "records_per_second": None,
+                        "peak_memory_mb": None,
+                        "error_type": stop_reason
+                        or ("memory_limit" if process.returncode == 70 else "worker_failure"),
+                        "failure_details": (
+                            cast(dict[str, Any], json.loads(failure.read_text(encoding="utf-8")))
+                            if failure.exists()
+                            else {}
+                        ),
+                        "worker_exit_code": process.returncode,
                     }
-                ),
-                flush=True,
-            )
-            if failed:
-                return 1  # Fail closed, retain diagnostics, never continue into larger work.
-    return 0
+                    failed = True
+                row.update(
+                    python_version=metadata["python_version"],
+                    platform=metadata["platform"],
+                    batch_id=batch,
+                )
+                document["results"].append(row)
+                document["suite_wall_seconds"] = time.monotonic() - started
+                if failed:
+                    error_type = row["error_type"]
+                    if not isinstance(error_type, str) or not error_type:
+                        error_type = "worker_failure"
+                    note_failure(document, error_type, error_type)
+                else:
+                    note_progress(document)
+                export(output, document)
+                print(
+                    json.dumps(
+                        {
+                            k: row.get(k)
+                            for k in (
+                                "scenario",
+                                "iteration",
+                                "status",
+                                "elapsed_seconds",
+                                "peak_memory_mb",
+                                "records_per_second",
+                                "error_type",
+                            )
+                        }
+                    ),
+                    flush=True,
+                )
+                if failed:
+                    return 1  # Fail closed, retain diagnostics, never continue into larger work.
+        note_success(document)
+        export(output, document)
+        return 0
+    except Exception as error:
+        document["suite_wall_seconds"] = time.monotonic() - started
+        return handle_supervisor_failure(output, document, error, process)
 
 
 if __name__ == "__main__":

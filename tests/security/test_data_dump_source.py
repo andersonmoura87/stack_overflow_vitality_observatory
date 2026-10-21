@@ -62,6 +62,18 @@ def test_symlink_directory_and_reparse_refusal(tmp_path: Path) -> None:
         inspect_source(target, max_file_bytes=10**6, attributes=lambda _path: 0xFFFFFFFF)
 
 
+def test_missing_windows_api_fails_closed(tmp_path: Path, monkeypatch) -> None:
+    import ctypes
+
+    import stackoverflow_vitality.data_dump.source as source_mod
+
+    monkeypatch.setattr(source_mod.os, "name", "nt")
+    monkeypatch.delattr(ctypes, "windll", raising=False)
+    with pytest.raises(DumpSourceError) as error:
+        source_mod.windows_attributes(tmp_path / "Posts.xml")
+    assert error.value.code == "source_refused"
+
+
 def test_null_byte_site_escape_and_output_limit(tmp_path: Path) -> None:
     with pytest.raises(DumpSourceError):
         inspect_source(Path("posts\x00.xml"), max_file_bytes=10)

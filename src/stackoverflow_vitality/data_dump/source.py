@@ -8,7 +8,7 @@ import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Protocol, cast
 
 SCAN_CHUNK = 1024**2
 FORBIDDEN_XML_TOKENS = (
@@ -77,15 +77,40 @@ def relative_source(path: Path, root: str) -> str:
     return text
 
 
+class _AttributeReader(Protocol):
+    argtypes: object
+    restype: object
+
+    def __call__(self, path: str) -> int: ...
+
+
+class _Kernel32(Protocol):
+    GetFileAttributesW: _AttributeReader
+
+
+class _WinDll(Protocol):
+    kernel32: _Kernel32
+
+
+def _win32_kernel() -> _Kernel32:
+    """Load kernel32. Missing Windows FFI fails closed and is not used on POSIX."""
+    import ctypes
+
+    windll = getattr(ctypes, "windll", None)
+    if windll is None:
+        raise DumpSourceError("source_refused")
+    kernel = getattr(cast(_WinDll, windll), "kernel32", None)
+    if kernel is None or getattr(kernel, "GetFileAttributesW", None) is None:
+        raise DumpSourceError("source_refused")
+    return cast(_Kernel32, kernel)
+
+
 def windows_attributes(path: Path) -> int | None:
     if os.name != "nt":
         return None
     import ctypes
 
-    kernel = getattr(ctypes.windll, "kernel32", None)
-    if kernel is None:
-        raise DumpSourceError("source_refused")
-    reader = kernel.GetFileAttributesW
+    reader = _win32_kernel().GetFileAttributesW
     reader.argtypes = (ctypes.c_wchar_p,)
     reader.restype = ctypes.c_uint32
     return int(reader(str(path)))

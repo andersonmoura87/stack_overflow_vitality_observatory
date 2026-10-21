@@ -16,6 +16,7 @@ from uuid import uuid4
 from stackoverflow_vitality.answers import cli as answers_cli
 from stackoverflow_vitality.config import CollectionConfig, load_config
 from stackoverflow_vitality.data_dump import cli as dump_cli
+from stackoverflow_vitality.data_dump_silver import cli as dump_silver_cli
 from stackoverflow_vitality.domain.serialization import to_record
 from stackoverflow_vitality.gold import cli as gold_cli
 from stackoverflow_vitality.ingestion.collector import collect_questions
@@ -35,6 +36,8 @@ def main(argv: list[str] | None = None) -> int:
         return answers_cli.main(args, parser)
     if args.command == "ingest-data-dump":
         return dump_cli.main(args, parser)
+    if args.command == "transform-data-dump":
+        return dump_silver_cli.main(args, parser)
     overrides = {
         key: value
         for key, value in vars(args).items()
@@ -85,6 +88,7 @@ def _build_parser() -> argparse.ArgumentParser:
     gold_cli.add_parser(subparsers)
     answers_cli.add_parser(subparsers)
     dump_cli.add_parser(subparsers)
+    dump_silver_cli.add_parser(subparsers)
     collect = subparsers.add_parser("collect-questions")
     collect.add_argument("--config", type=Path, default=Path("configs/collection.yml"))
     for name, default in asdict(CollectionConfig()).items():

@@ -96,7 +96,7 @@ CLI + YAML -> Stack Exchange API -> páginas Bronze imutáveis
 ```
 
 - [Arquitetura local](docs/architecture.md) e [decisões de persistência](docs/adr/ADR-007-local-commit-and-immutability.md).
-- [Contrato Bronze](docs/data-contracts/bronze_stackexchange_questions_snapshot.md), [watermarks](docs/data-contracts/collection_watermarks.md), [execuções](docs/data-contracts/ingestion_runs.md), [respostas](docs/data-contracts/bronze_stackexchange_answers_snapshot.md) e [Data Dump](docs/data-contracts/bronze_stackexchange_data_dump_posts.md).
+- [Contrato Bronze](docs/data-contracts/bronze_stackexchange_questions_snapshot.md), [watermarks](docs/data-contracts/collection_watermarks.md), [execuções](docs/data-contracts/ingestion_runs.md), [respostas](docs/data-contracts/bronze_stackexchange_answers_snapshot.md), [Data Dump Bronze](docs/data-contracts/bronze_stackexchange_data_dump_posts.md) e [Silver do Data Dump](docs/data-contracts/silver_data_dump_question_content.md).
 - [Perguntas de pesquisa](docs/research_questions.md), [metodologia](docs/methodology.md), [data card](docs/data_card.md) e [contrato Gold](docs/data-contracts/gold_vitality.md).
 - [Recuperação de falhas parciais](docs/runbooks/partial-write.md).
 
@@ -105,7 +105,7 @@ CLI + YAML -> Stack Exchange API -> páginas Bronze imutáveis
 1. Escala Silver: evolução da persistência e migração versionada, após medição do volume local.
 2. Métricas observacionais além dos agregados descritivos da Gold v1.
 3. Tempo até resposta e aceite, com censura. A entidade de resposta já tem Bronze e Silver; essas métricas ainda não são calculadas.
-4. Histórico e contexto: Data Dump com ingestão offline de `Posts.xml` local para o Bronze, sem download, sem modo completo e sem reescrever a Silver da API; Developer Survey como fonte independente.
+4. Histórico e contexto: Data Dump com Bronze offline e Silver de snapshots por `transform-data-dump`, sem download, sem modo completo e sem reescrever a Silver da API; Developer Survey como fonte independente.
 5. NLP avaliado: sinais de IA, tópicos e complexidade técnica do conteúdo.
 6. Consumo analítico: dashboard e relatórios reproduzíveis.
 7. Operação AWS: adaptadores, observabilidade e infraestrutura após definição de custos e controles.
@@ -129,6 +129,22 @@ Remova `--dry-run` para transformar arquivos locais. `--run-id <UUID>` seleciona
 Conteúdo e métricas têm históricos separados. Saídas JSONL ficam em `data/silver/questions/generation=<hash>/`; o manifesto em `data/silver/manifests/` é o ponto de commit após confirmação de todas as saídas. A quarentena referencia o item Bronze sem duplicar corpos. Replay não duplica dados; cada tentativa recebe manifesto próprio. Testes criam apenas páginas sintéticas em diretórios temporários.
 
 Consulte o [contrato Silver](docs/data-contracts/silver_questions.md), a [decisão de histórico](docs/adr/ADR-008-silver-history-and-publication.md) e o [runbook de transformação](docs/runbooks/silver-transformation.md). O adaptador reconstrói o histórico em memória; volume grande e armazenamento distribuído exigem evolução explícita.
+
+## Data Dump local
+
+Com um `Posts.xml` sintético ou local já ingerido por `ingest-data-dump`, a Silver do dump lê o manifesto Bronze consumível. Não baixa arquivo, não lê a API e não escreve em `data/silver/questions` nem em `data/silver/answers`.
+
+```powershell
+$env:PYTHONPATH = (Join-Path (Get-Location) 'src')
+python -m stackoverflow_vitality.cli transform-data-dump `
+  --bronze-generation data/bronze/data_dump/manifests/<ingestion_identity>.json `
+  --output-dir data/silver/data_dump `
+  --transformation-run-id <run-id> `
+  --max-body-chars 500000 `
+  --dry-run
+```
+
+O dry-run confere manifesto, consumo, inventário, checksums, identidade e destinos. Não cria diretório, lock, staging, JSONL nem manifesto. Saídas reais ficam em `data/silver/data_dump/g=<silver_generation_id>/`. O procedimento está no [runbook](docs/runbooks/data-dump-silver.md) e a decisão no [ADR-012](docs/adr/ADR-012-data-dump-silver-history.md).
 
 ## Indicadores descritivos
 

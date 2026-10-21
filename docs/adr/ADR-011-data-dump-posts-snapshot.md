@@ -1,7 +1,7 @@
 # ADR-011: Snapshot local de Posts.xml como Bronze próprio
 
 - **Status:** accepted
-- **Fase:** 5.0 definiu o desenho. A Fase 5.1 implementa o Bronze offline com `ingest-data-dump`. Não há download, modo completo nem Silver.
+- **Fase:** 5.0 definiu o desenho. A Fase 5.1 implementa o Bronze offline com `ingest-data-dump`. A Fase 5.2 publica a Silver própria do dump; ver [ADR-012](ADR-012-data-dump-silver-history.md). Não há download nem modo completo.
 
 ## Contexto
 
@@ -146,7 +146,7 @@ Snapshot que chega depois de observações recentes não reescreve a Silver da A
 
 ## Silver
 
-A alternativa A, escrever nos datasets Silver atuais, mistura corte e observação e pode alterar a história já usada pela Gold. A alternativa C, uma camada canônica agora, exige a reconciliação que esta fase ainda não tem. A alternativa B é a escolhida: uma Silver histórica só do Data Dump, reconciliada depois com a Silver da API. A Fase 5.1 não cria essa Silver. Métrica histórica continua bloqueada enquanto `dump_cutoff_status` não for utilizável pelo contrato da reconciliação.
+A alternativa A, escrever nos datasets Silver atuais, mistura corte e observação e pode alterar a história já usada pela Gold. A alternativa C, uma camada canônica agora, exige a reconciliação que esta fase ainda não tem. A alternativa B é a escolhida: uma Silver histórica só do Data Dump, reconciliada depois com a Silver da API. A Fase 5.1 não cria essa Silver. A Fase 5.2 a publica em `transform-data-dump`, como observações discretas de um snapshot, sem intervalos e sem reescrever a Silver da API. Métrica histórica causal continua bloqueada enquanto `dump_cutoff_status` não for utilizável pelo contrato da reconciliação. `unknown` e `operator_declared` continuam sendo o que o manifesto Bronze gravou; esta fase não emite `verified`.
 
 ## Qualidade, observação e limites
 
@@ -158,7 +158,7 @@ Métricas: bytes lidos, bytes gravados, registros por segundo, tempo decorrido, 
 
 ## CLI
 
-O comando desenhado, ainda inexistente, é `ingest-data-dump` com `--dry-run`. Um comando `inspect-data-dump` separado repetiria a validação. A precedência é CLI, ambiente `STACKEXCHANGE_DUMP_*`, YAML, padrão. Não há segredo nesse documento.
+O comando `ingest-data-dump`, com `--dry-run`, existe desde a Fase 5.1. Um comando `inspect-data-dump` separado repetiria a validação. A precedência é CLI, ambiente `STACKEXCHANGE_DUMP_*`, YAML, padrão. Não há segredo nesse documento.
 
 Argumentos: `--source`, `--site`, `--publication-id`, `--dump-cutoff`, `--question-ids-file`, `--output-dir`, `--dry-run` e os limites do contrato. `--publication-id` e o arquivo de IDs são obrigatórios. Corte ausente é `unknown`. Corte inválido, caminho com byte nulo, seleção duplicada ou limite contraditório falham antes da leitura. `--record-relative-path` é opt-in.
 

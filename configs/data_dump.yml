@@ -1,0 +1,13 @@
+site: stackoverflow
+publication_id: example-publication
+bronze_output: data/bronze
+quarantine_output: data/quarantine
+max_file_bytes: 8589934592
+max_records: 100000
+max_attribute_bytes: 1048576
+max_body_chars: 500000
+max_output_bytes: 2147483648
+max_shard_records: 5000
+max_shard_bytes: 67108864
+min_free_bytes: 1073741824
+progress_every: 100000

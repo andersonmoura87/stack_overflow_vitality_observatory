@@ -6,7 +6,7 @@ Observatório local-first para investigar mudanças nas funções de descoberta,
 
 A implementação oferece coleta incremental de perguntas por tag, cliente HTTP com retries e backoff, CLI configurável, snapshots Bronze imutáveis, confirmação de integridade, manifestos de execução e watermark com compare-and-set local. Backfill preserva o estado operacional; dry-run permite conferir a configuração sem acesso à rede.
 
-A transformação Bronze → Silver de perguntas inclui contrato versionado, limpeza de HTML/texto/código, quarentena, histórico de conteúdo, observações de métricas e linhagem. A Gold v1 publica indicadores descritivos mensais de perguntas, por site e por tag, a partir dessa Silver. NLP, respostas e comentários como entidades, tempo até resposta, Dump, Survey, dashboard e AWS não estão implementados. Terraform não possui recursos. Nenhuma coleta real é necessária para testes.
+A transformação Bronze → Silver de perguntas inclui contrato versionado, limpeza de HTML/texto/código, quarentena, histórico de conteúdo, observações de métricas e linhagem. A Gold v1 publica indicadores descritivos mensais de perguntas, por site e por tag, a partir dessa Silver. NLP, respostas e comentários como entidades, tempo até resposta, Survey, dashboard e AWS não estão implementados. Terraform não possui recursos. Nenhuma coleta real é necessária para testes.
 
 ## Desenvolvimento
 
@@ -96,7 +96,7 @@ CLI + YAML -> Stack Exchange API -> páginas Bronze imutáveis
 ```
 
 - [Arquitetura local](docs/architecture.md) e [decisões de persistência](docs/adr/ADR-007-local-commit-and-immutability.md).
-- [Contrato Bronze](docs/data-contracts/bronze_stackexchange_questions_snapshot.md), [watermarks](docs/data-contracts/collection_watermarks.md), [execuções](docs/data-contracts/ingestion_runs.md) e [respostas](docs/data-contracts/bronze_stackexchange_answers_snapshot.md).
+- [Contrato Bronze](docs/data-contracts/bronze_stackexchange_questions_snapshot.md), [watermarks](docs/data-contracts/collection_watermarks.md), [execuções](docs/data-contracts/ingestion_runs.md), [respostas](docs/data-contracts/bronze_stackexchange_answers_snapshot.md) e [Data Dump](docs/data-contracts/bronze_stackexchange_data_dump_posts.md).
 - [Perguntas de pesquisa](docs/research_questions.md), [metodologia](docs/methodology.md), [data card](docs/data_card.md) e [contrato Gold](docs/data-contracts/gold_vitality.md).
 - [Recuperação de falhas parciais](docs/runbooks/partial-write.md).
 
@@ -105,7 +105,7 @@ CLI + YAML -> Stack Exchange API -> páginas Bronze imutáveis
 1. Escala Silver: evolução da persistência e migração versionada, após medição do volume local.
 2. Métricas observacionais além dos agregados descritivos da Gold v1.
 3. Tempo até resposta e aceite, com censura. A entidade de resposta já tem Bronze e Silver; essas métricas ainda não são calculadas.
-4. Histórico e contexto: Data Dump e Developer Survey como fontes independentes.
+4. Histórico e contexto: Data Dump com ingestão offline de `Posts.xml` local para o Bronze, sem download, sem modo completo e sem reescrever a Silver da API; Developer Survey como fonte independente.
 5. NLP avaliado: sinais de IA, tópicos e complexidade técnica do conteúdo.
 6. Consumo analítico: dashboard e relatórios reproduzíveis.
 7. Operação AWS: adaptadores, observabilidade e infraestrutura após definição de custos e controles.

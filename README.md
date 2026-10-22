@@ -96,7 +96,7 @@ CLI + YAML -> Stack Exchange API -> páginas Bronze imutáveis
 ```
 
 - [Arquitetura local](docs/architecture.md) e [decisões de persistência](docs/adr/ADR-007-local-commit-and-immutability.md).
-- [Contrato Bronze](docs/data-contracts/bronze_stackexchange_questions_snapshot.md), [watermarks](docs/data-contracts/collection_watermarks.md), [execuções](docs/data-contracts/ingestion_runs.md), [respostas](docs/data-contracts/bronze_stackexchange_answers_snapshot.md), [Data Dump Bronze](docs/data-contracts/bronze_stackexchange_data_dump_posts.md) e [Silver do Data Dump](docs/data-contracts/silver_data_dump_question_content.md).
+- [Contrato Bronze](docs/data-contracts/bronze_stackexchange_questions_snapshot.md), [watermarks](docs/data-contracts/collection_watermarks.md), [execuções](docs/data-contracts/ingestion_runs.md), [respostas](docs/data-contracts/bronze_stackexchange_answers_snapshot.md), [Data Dump Bronze](docs/data-contracts/bronze_stackexchange_data_dump_posts.md), [Silver do Data Dump](docs/data-contracts/silver_data_dump_question_content.md) e [reconciliação futura](docs/data-contracts/reconciled_stackexchange_posts.md).
 - [Perguntas de pesquisa](docs/research_questions.md), [metodologia](docs/methodology.md), [data card](docs/data_card.md) e [contrato Gold](docs/data-contracts/gold_vitality.md).
 - [Recuperação de falhas parciais](docs/runbooks/partial-write.md).
 
@@ -105,7 +105,7 @@ CLI + YAML -> Stack Exchange API -> páginas Bronze imutáveis
 1. Escala Silver: evolução da persistência e migração versionada, após medição do volume local.
 2. Métricas observacionais além dos agregados descritivos da Gold v1.
 3. Tempo até resposta e aceite, com censura. A entidade de resposta já tem Bronze e Silver; essas métricas ainda não são calculadas.
-4. Histórico e contexto: Data Dump com Bronze offline e Silver de snapshots por `transform-data-dump`, sem download, sem modo completo e sem reescrever a Silver da API; Developer Survey como fonte independente.
+4. Histórico e contexto: Data Dump com Bronze offline e Silver de snapshots por `transform-data-dump`, sem download, sem modo completo e sem reescrever a Silver da API. A reconciliação com a API está desenhada e não implementada. Developer Survey continua fonte independente.
 5. NLP avaliado: sinais de IA, tópicos e complexidade técnica do conteúdo.
 6. Consumo analítico: dashboard e relatórios reproduzíveis.
 7. Operação AWS: adaptadores, observabilidade e infraestrutura após definição de custos e controles.
@@ -145,6 +145,8 @@ python -m stackoverflow_vitality.cli transform-data-dump `
 ```
 
 O dry-run confere manifesto, consumo, inventário, checksums, identidade e destinos. Não cria diretório, lock, staging, JSONL nem manifesto. Saídas reais ficam em `data/silver/data_dump/g=<silver_generation_id>/`. O procedimento está no [runbook](docs/runbooks/data-dump-silver.md) e a decisão no [ADR-012](docs/adr/ADR-012-data-dump-silver-history.md).
+
+A reconciliação futura entre essa Silver e a Silver da API está especificada em `data/reconciled/stackexchange/` e não tem comando. A Gold não a lê. Ver [ADR-013](docs/adr/ADR-013-api-data-dump-reconciliation.md) e o [runbook](docs/runbooks/api-dump-reconciliation.md).
 
 ## Indicadores descritivos
 
